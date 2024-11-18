@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isValidAppCheck() {
+      return request.auth.token.app_check == true;
+    }
+
+    // Allow users to read and write their own profile
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId) && isValidAppCheck();
+      allow create: if isSignedIn() && isValidAppCheck();
+      
+      match /private/{document=**} {
+        allow read, write: if isSignedIn() && isOwner(userId) && isValidAppCheck();
+      }
+    }
+
+    // Messages
+    match /messages/{messageId} {
+      allow read: if isSignedIn() && isValidAppCheck() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+      allow create: if isSignedIn() && isValidAppCheck();
+      allow update, delete: if isSignedIn() && isValidAppCheck() && resource.data.senderId == request.auth.uid;
+    }
+
+    // Groups
+    match /groups/{groupId} {
+      allow read: if isSignedIn() && isValidAppCheck();
+      allow create: if isSignedIn() && isValidAppCheck();
+      allow update, delete: if isSignedIn() && isValidAppCheck() && resource.data.createdBy == request.auth.uid;
+    }
+
+    // Allow reading user profiles for all authenticated users
+    match /users/{userId}/profile {
+      allow read: if isSignedIn() && isValidAppCheck();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
